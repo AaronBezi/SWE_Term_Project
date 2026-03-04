@@ -9,6 +9,8 @@
  *   GET  /modules       — list all modules          (public)
  *   GET  /modules/:id   — get one module + lessons  (public)
  *   GET  /lessons/:id   — get one lesson with content (public)
+ *   GET  /progress      — list user's completed lessons (requires auth)
+ *   POST /progress      — mark a lesson as complete    (requires auth)
  */
 
 const express = require("express");
@@ -19,8 +21,9 @@ require("dotenv").config();
 require("./db");
 
 // Import route files
-const modulesRouter = require("./routes/modules");
-const lessonsRouter = require("./routes/lessons");
+const modulesRouter  = require("./routes/modules");
+const lessonsRouter  = require("./routes/lessons");
+const progressRouter = require("./routes/progress");
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -46,8 +49,9 @@ app.get("/", (req, res) => {
   res.json({ message: "Caissa API is running" });
 });
 
-app.use("/modules", modulesRouter);
-app.use("/lessons", lessonsRouter);
+app.use("/modules",  modulesRouter);
+app.use("/lessons",  lessonsRouter);
+app.use("/progress", progressRouter);
 
 
 // -------------------------------------------------------------------
