@@ -13,9 +13,31 @@
  *   POST /progress      — mark a lesson as complete    (requires auth)
  */
 
-const express = require("express");
-const cors    = require("cors");
+const express   = require("express");
+const cors      = require("cors");
+const helmet    = require("helmet");
+const rateLimit = require("express-rate-limit");
 require("dotenv").config();
+
+
+// -------------------------------------------------------------------
+// Startup environment variable validation
+// Fail immediately if required secrets are missing so developers
+// get a clear error instead of a confusing runtime failure later.
+// -------------------------------------------------------------------
+
+const REQUIRED_ENV_VARS = ["DATABASE_URL", "SUPABASE_JWT_SECRET"];
+
+for (const varName of REQUIRED_ENV_VARS) {
+  const value = process.env[varName];
+  // Treat missing or un-filled placeholder values as invalid
+  if (!value || value.startsWith("<")) {
+    console.error(`FATAL: Missing required environment variable: ${varName}`);
+    console.error(`       Set it in backend/.env before starting the server.`);
+    process.exit(1); // Stop the server — running without this would be insecure
+  }
+}
+
 
 // Import the database pool — connecting it here logs a confirmation on startup
 require("./db");
@@ -30,14 +52,38 @@ const PORT = process.env.PORT || 3000;
 
 
 // -------------------------------------------------------------------
-// Global middleware
+// Security middleware
 // -------------------------------------------------------------------
 
-// Allow the frontend (localhost:5173) to make requests to this API
-app.use(cors());
+// helmet sets a collection of HTTP response headers that protect against
+// common browser-based attacks (XSS, clickjacking, MIME sniffing, etc.).
+// It should be the first middleware so headers are set on every response.
+app.use(helmet());
 
-// Parse JSON bodies so req.body is available in route handlers
-app.use(express.json());
+// CORS — only allow requests from the known frontend origin.
+// Any request from a different origin (e.g., a malicious site trying to
+// call our API from a user's browser) will be blocked by the browser.
+//
+// CORS_ORIGIN can be set in .env for production (e.g., https://caissa.app).
+// Falls back to the local Vite dev server if not set.
+const allowedOrigin = process.env.CORS_ORIGIN || "http://localhost:5173";
+app.use(cors({ origin: allowedOrigin }));
+
+// Rate limiting — caps how many requests a single IP address can make.
+// This slows down brute-force attempts and protects against basic DoS.
+// Limit: 100 requests per 15 minutes per IP address.
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes in milliseconds
+  max: 100,                  // maximum requests per window per IP
+  standardHeaders: true,     // return rate limit info in RateLimit-* headers
+  legacyHeaders: false,      // disable the older X-RateLimit-* headers
+  message: { error: "Too many requests — please try again later" },
+});
+app.use(limiter);
+
+// Parse incoming JSON bodies.
+// The "10kb" limit prevents attackers from sending huge payloads to exhaust memory.
+app.use(express.json({ limit: "10kb" }));
 
 
 // -------------------------------------------------------------------
@@ -52,6 +98,13 @@ app.get("/", (req, res) => {
 app.use("/modules",  modulesRouter);
 app.use("/lessons",  lessonsRouter);
 app.use("/progress", progressRouter);
+
+// 404 handler — catches any request that did not match a route above.
+// Returns JSON instead of Express's default HTML error page, which could
+// leak framework version information.
+app.use((_req, res) => {
+  res.status(404).json({ error: "Route not found" });
+});
 
 
 // -------------------------------------------------------------------

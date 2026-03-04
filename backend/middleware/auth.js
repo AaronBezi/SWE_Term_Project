@@ -27,6 +27,11 @@
 
 const jwt = require("jsonwebtoken");
 
+// Regex pattern for a valid UUID v4 (the format Supabase uses for user IDs).
+// Example valid value: "c3d4e5f6-1234-4abc-8def-000000000000"
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * requireAuth — Express middleware function
  *
@@ -49,9 +54,20 @@ function requireAuth(req, res, next) {
   const token = authHeader.split(" ")[1];
 
   try {
-    // Verify the token's signature and check that it has not expired.
-    // jwt.verify() throws an error if anything is wrong with the token.
-    const decoded = jwt.verify(token, process.env.SUPABASE_JWT_SECRET);
+    // Verify the token's signature and expiration using the Supabase JWT secret.
+    // Security: { algorithms: ["HS256"] } explicitly pins the expected algorithm.
+    // Without this, an attacker could craft a token with "alg":"none" and
+    // bypass signature verification entirely.
+    const decoded = jwt.verify(token, process.env.SUPABASE_JWT_SECRET, {
+      algorithms: ["HS256"],
+    });
+
+    // Security: confirm the token contains a valid UUID in the `sub` (subject) field.
+    // `sub` is the user's Supabase UUID. If it is missing or malformed, we reject
+    // the request rather than passing undefined or garbage to database queries.
+    if (!decoded.sub || !UUID_REGEX.test(decoded.sub)) {
+      return res.status(401).json({ error: "Invalid token: missing or malformed user ID" });
+    }
 
     // Attach the decoded payload to the request so route handlers can use it.
     // Key fields in decoded:

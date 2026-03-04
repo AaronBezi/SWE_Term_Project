@@ -100,10 +100,13 @@ router.post("/", async (req, res) => {
   const userId    = req.user.sub;
   const { lesson_id } = req.body;
 
-  // Validate that lesson_id is present and is an integer
-  if (!lesson_id || !Number.isInteger(lesson_id)) {
+  // Validate that lesson_id is present, is a positive integer, and not a float.
+  // - lesson_id == null catches both undefined and null (body field missing entirely)
+  // - Number.isInteger() rejects floats like 3.5
+  // - lesson_id > 0 rejects zero and negative numbers (DB IDs start at 1)
+  if (lesson_id == null || !Number.isInteger(lesson_id) || lesson_id < 1) {
     return res.status(400).json({
-      error: "lesson_id is required and must be an integer",
+      error: "lesson_id is required and must be a positive integer",
     });
   }
 
