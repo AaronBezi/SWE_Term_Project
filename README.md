@@ -49,11 +49,13 @@ Create a `.env` file in `backend/`:
 ```
 PORT=3000
 DATABASE_URL=postgresql://postgres:<your-postgres-password>@localhost:5432/caissa
+SUPABASE_JWT_SECRET=<ask project manager for this>
 ```
 
 Replace `<your-postgres-password>` with the password you set during PostgreSQL installation.
+`SUPABASE_JWT_SECRET` is found in the Supabase Dashboard → **Settings → JWT Keys → Legacy JWT Keys → Legacy JWT secret (still used)**.
 
-### 3. Create the Database
+### 3. Create the Database and Run Migrations
 
 ```bash
 psql -U postgres
@@ -62,6 +64,12 @@ psql -U postgres
 ```sql
 CREATE DATABASE caissa;
 \q
+```
+
+Then run the local development schema (creates all tables and seeds sample data):
+
+```bash
+psql -U postgres -d caissa -f backend/migrations/001_init_local.sql
 ```
 
 ### 4. Run the App
@@ -115,6 +123,11 @@ Use a short prefix to describe the type of change:
 - `Fix:` — bug fix
 - `Update:` — improvement to existing code
 - `Docs:` — documentation only
+
+## Documentation
+
+- **Backend API Reference** — [`backend/API.md`](backend/API.md)
+  Everything the frontend developer needs to call the backend: all endpoints, request/response formats, authentication, error codes, and code examples.
 
 ## Team
 
