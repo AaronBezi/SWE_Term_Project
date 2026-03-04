@@ -8,6 +8,7 @@
  *   GET  /              — health check
  *   GET  /modules       — list all modules          (public)
  *   GET  /modules/:id   — get one module + lessons  (public)
+ *   GET  /lessons/:id   — get one lesson with content (public)
  */
 
 const express = require("express");
@@ -19,6 +20,7 @@ require("./db");
 
 // Import route files
 const modulesRouter = require("./routes/modules");
+const lessonsRouter = require("./routes/lessons");
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -45,6 +47,7 @@ app.get("/", (req, res) => {
 });
 
 app.use("/modules", modulesRouter);
+app.use("/lessons", lessonsRouter);
 
 
 // -------------------------------------------------------------------
