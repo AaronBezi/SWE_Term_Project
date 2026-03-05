@@ -21,8 +21,8 @@
  * The most important field is req.user.sub — the Supabase user's UUID.
  *
  * SUPABASE_JWT_SECRET:
- *   Found in Supabase Dashboard → Project Settings → API → JWT Secret
- *   Must be set in backend/.env
+ *   Found in Supabase Dashboard → Settings → JWT Keys → Legacy JWT Keys
+ *   → Legacy JWT secret (still used). Must be set in backend/.env
  */
 
 const jwt = require("jsonwebtoken");

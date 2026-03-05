@@ -48,12 +48,14 @@ Create a `.env` file in `backend/`:
 
 ```
 PORT=3000
-DATABASE_URL=postgresql://postgres:<your-postgres-password>@localhost:5432/caissa
+DATABASE_URL=postgresql://postgres:<your-postgres-password>@127.0.0.1:5432/caissa
 SUPABASE_JWT_SECRET=<ask project manager for this>
 ```
 
 Replace `<your-postgres-password>` with the password you set during PostgreSQL installation.
 `SUPABASE_JWT_SECRET` is found in the Supabase Dashboard → **Settings → JWT Keys → Legacy JWT Keys → Legacy JWT secret (still used)**.
+
+> **Password special characters:** If your PostgreSQL password contains `?`, `#`, `@`, or `!`, you must percent-encode them in `DATABASE_URL` or the server will fail to connect. Common encodings: `!` → `%21`, `?` → `%3F`, `#` → `%23`, `@` → `%40`. Example: password `my!pass?` becomes `my%21pass%3F` in the URL.
 
 ### 3. Create the Database and Run Migrations
 

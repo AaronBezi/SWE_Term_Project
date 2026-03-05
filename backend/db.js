@@ -8,15 +8,37 @@
  * All route files import this pool and call pool.query() to run SQL.
  *
  * The connection string is read from DATABASE_URL in .env:
- *   postgresql://postgres:<password>@localhost:5432/caissa
+ *   postgresql://postgres:<password>@127.0.0.1:5432/caissa
+ *
+ * Special characters in passwords:
+ *   If your PostgreSQL password contains characters that are special in URLs
+ *   (such as ? # @ ! :), you must percent-encode them in DATABASE_URL.
+ *   Common encodings:  ! → %21   ? → %3F   # → %23   @ → %40
+ *
+ *   Why we parse manually:
+ *   pg's built-in URL parser does not always decode percent-encoded
+ *   passwords before sending them to PostgreSQL, causing auth failures.
+ *   We use Node's URL class to split the connection string into parts,
+ *   then call decodeURIComponent() on each part before passing them to
+ *   pg.Pool — this reliably handles any percent-encoded special characters.
  */
 
 const { Pool } = require("pg");
 
-// Create the pool using the connection string from the environment.
-// pg reads DATABASE_URL automatically when connectionString is set.
+// Parse DATABASE_URL with Node's URL class so that percent-encoded special
+// characters in the password are correctly decoded before reaching pg.
+// Example: decodeURIComponent("chess%21pass%3F") returns "chess!pass?"
+const dbUrl = new URL(process.env.DATABASE_URL);
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  user:     decodeURIComponent(dbUrl.username),
+  // decodeURIComponent is required here — for non-standard URL schemes like
+  // "postgresql://", Node's URL class does NOT auto-decode percent-encoded
+  // characters. Without this, %21 stays as %21 instead of becoming !
+  password: decodeURIComponent(dbUrl.password),
+  host:     dbUrl.hostname,
+  port:     parseInt(dbUrl.port, 10),
+  database: dbUrl.pathname.slice(1),  // pathname is "/caissa" — remove the leading /
 });
 
 // Test the connection immediately on startup.
