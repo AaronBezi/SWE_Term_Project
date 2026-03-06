@@ -5,12 +5,17 @@
  * Environment variables are loaded from .env via dotenv.
  *
  * Available routes:
- *   GET  /              — health check
- *   GET  /modules       — list all modules          (public)
- *   GET  /modules/:id   — get one module + lessons  (public)
- *   GET  /lessons/:id   — get one lesson with content (public)
- *   GET  /progress      — list user's completed lessons (requires auth)
- *   POST /progress      — mark a lesson as complete    (requires auth)
+ *   GET    /              — health check
+ *   GET    /modules       — list all modules          (public)
+ *   GET    /modules/:id   — get one module + lessons  (public)
+ *   PUT    /modules/:id   — update a module           (admin)
+ *   DELETE /modules/:id   — delete a module           (admin)
+ *   GET    /lessons/:id   — get one lesson with content (public)
+ *   PUT    /lessons/:id   — update a lesson           (admin)
+ *   DELETE /lessons/:id   — delete a lesson           (admin)
+ *   GET    /puzzles/lesson/:lessonId — puzzles for a lesson (public)
+ *   GET    /progress      — list user's completed lessons (requires auth)
+ *   POST   /progress      — mark a lesson as complete    (requires auth)
  */
 
 const express   = require("express");
@@ -45,6 +50,7 @@ require("./db");
 // Import route files
 const modulesRouter  = require("./routes/modules");
 const lessonsRouter  = require("./routes/lessons");
+const puzzlesRouter  = require("./routes/puzzles");
 const progressRouter = require("./routes/progress");
 
 const app  = express();
@@ -97,6 +103,7 @@ app.get("/", (req, res) => {
 
 app.use("/modules",  modulesRouter);
 app.use("/lessons",  lessonsRouter);
+app.use("/puzzles",  puzzlesRouter);
 app.use("/progress", progressRouter);
 
 // 404 handler — catches any request that did not match a route above.
