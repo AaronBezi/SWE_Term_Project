@@ -84,4 +84,34 @@ function requireAuth(req, res, next) {
   }
 }
 
-module.exports = { requireAuth };
+/**
+ * requireAdmin — Express middleware function
+ *
+ * Must be used after requireAuth (relies on req.user being set).
+ * Checks the user's role in the public.users table and rejects
+ * the request with 403 Forbidden if they are not an admin.
+ *
+ * Usage:
+ *   router.delete("/:id", requireAuth, requireAdmin, handler);
+ */
+const db = require("../db");
+
+async function requireAdmin(req, res, next) {
+  try {
+    const result = await db.query(
+      `SELECT role FROM users WHERE id = $1`,
+      [req.user.sub]
+    );
+
+    if (result.rows.length === 0 || result.rows[0].role !== "admin") {
+      return res.status(403).json({ error: "Admin access required" });
+    }
+
+    next();
+  } catch (err) {
+    console.error("requireAdmin error:", err.message);
+    res.status(500).json({ error: "Failed to verify admin role" });
+  }
+}
+
+module.exports = { requireAuth, requireAdmin };
