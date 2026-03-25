@@ -14,14 +14,19 @@ export default function Login() {
     setError(null)
     setLoading(true)
 
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
     setLoading(false)
 
     if (error) {
       setError(error.message)
-    } else {
+      return
+    }
+
+    if (data.session) {
       navigate('/modules')
+    } else {
+      setError('Login succeeded but no session was created. Try again.')
     }
   }
 
