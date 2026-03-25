@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
-
-const API = 'http://localhost:3000'
+import API from '../config'
 
 export default function LessonView() {
   const { id } = useParams()

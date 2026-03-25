@@ -54,13 +54,11 @@ function requireAuth(req, res, next) {
   const token = authHeader.split(" ")[1];
 
   try {
-    // Verify the token's signature and expiration using the Supabase JWT secret.
-    // Security: { algorithms: ["HS256"] } explicitly pins the expected algorithm.
-    // Without this, an attacker could craft a token with "alg":"none" and
-    // bypass signature verification entirely.
-    const decoded = jwt.verify(token, process.env.SUPABASE_JWT_SECRET, {
-      algorithms: ["HS256"],
-    });
+    const secret = process.env.SUPABASE_JWT_PUBLIC_KEY
+      ? process.env.SUPABASE_JWT_PUBLIC_KEY.replace(/\\n/g, "\n")
+      : process.env.SUPABASE_JWT_SECRET;
+    const algos = process.env.SUPABASE_JWT_PUBLIC_KEY ? ["ES256"] : ["HS256"];
+    const decoded = jwt.verify(token, secret, { algorithms: algos });
 
     // Security: confirm the token contains a valid UUID in the `sub` (subject) field.
     // `sub` is the user's Supabase UUID. If it is missing or malformed, we reject

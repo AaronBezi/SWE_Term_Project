@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
-
-const API = 'http://localhost:3000'
+import API from '../config'
 
 export default function Dashboard() {
   const navigate = useNavigate()
   const [progress, setProgress] = useState([])
-  const [modules, setModules] = useState([])
+  const [allLessons, setAllLessons] = useState([])
+  const [totalModules, setTotalModules] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -23,15 +23,21 @@ export default function Dashboard() {
         const [modRes, progRes] = await Promise.all([
           fetch(`${API}/modules`),
           fetch(`${API}/progress`, {
-            headers: {
-              'Authorization': `Bearer ${session.access_token}`
-            }
+            headers: { 'Authorization': `Bearer ${session.access_token}` }
           })
         ])
 
         if (!modRes.ok || !progRes.ok) throw new Error('Failed to load data')
 
-        setModules(await modRes.json())
+        const modList = await modRes.json()
+        setTotalModules(modList.length)
+
+        // Fetch each module with its lessons to get full lesson list in order
+        const fullModules = await Promise.all(
+          modList.map(m => fetch(`${API}/modules/${m.id}`).then(r => r.json()))
+        )
+        const lessons = fullModules.flatMap(m => m.lessons || [])
+        setAllLessons(lessons)
         setProgress(await progRes.json())
       } catch (err) {
         setError(err.message)
@@ -54,12 +60,16 @@ export default function Dashboard() {
   )
 
   const completedCount = progress.length
-  const totalModules = modules.length
+  const totalLessons = allLessons.length
+  const completedLessonIds = new Set(progress.map(p => p.lesson_id))
   const completedModuleIds = new Set(progress.map(p => p.module_id))
   const completedModules = completedModuleIds.size
-  const nextLessonId = progress.length > 0
-    ? progress[progress.length - 1].lesson_id + 1
-    : 1
+  const progressPercent = totalLessons > 0
+    ? Math.round((completedCount / totalLessons) * 100)
+    : 0
+
+  // Find the first lesson that hasn't been completed yet
+  const nextLesson = allLessons.find(l => !completedLessonIds.has(l.id))
 
   return (
     <div className="max-w-2xl mx-auto px-4 py-10">
@@ -71,7 +81,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 gap-4 mb-8">
         <div className="bg-white border rounded-xl p-5">
           <p className="text-sm text-gray-500 mb-1">Lessons Completed</p>
-          <p className="text-3xl font-bold">{completedCount}</p>
+          <p className="text-3xl font-bold">{completedCount} / {totalLessons}</p>
         </div>
         <div className="bg-white border rounded-xl p-5">
           <p className="text-sm text-gray-500 mb-1">Modules Started</p>
@@ -84,24 +94,35 @@ export default function Dashboard() {
       <div className="bg-white border rounded-xl p-5 mb-8">
         <div className="flex justify-between text-sm mb-2">
           <span className="font-medium">Overall Progress</span>
-          <span className="text-gray-500">{completedCount} lessons done</span>
+          <span className="text-gray-500">{progressPercent}%</span>
         </div>
         <div className="w-full bg-gray-100 rounded-full h-3">
           <div
             className="bg-gray-900 h-3 rounded-full transition-all duration-500"
-            style={{
-              width: completedCount === 0 ? '0%' : `${Math.min(completedCount * 10, 100)}%`
-            }}
+            style={{ width: `${progressPercent}%` }}
           />
         </div>
       </div>
 
-      <button
-        onClick={() => navigate(`/lessons/${nextLessonId}`)}
-        className="w-full bg-gray-900 text-white py-3 rounded-xl font-semibold hover:bg-gray-700 mb-8"
-      >
-        Continue Learning →
-      </button>
+      {nextLesson ? (
+        <button
+          onClick={() => navigate(`/lessons/${nextLesson.id}`)}
+          className="w-full bg-gray-900 text-white py-3 rounded-xl font-semibold hover:bg-gray-700 mb-8"
+        >
+          Continue Learning → {nextLesson.title}
+        </button>
+      ) : completedCount > 0 ? (
+        <div className="w-full bg-green-50 border border-green-200 text-green-700 py-3 rounded-xl font-semibold text-center mb-8">
+          🎉 All lessons complete!
+        </div>
+      ) : (
+        <button
+          onClick={() => navigate('/modules')}
+          className="w-full bg-gray-900 text-white py-3 rounded-xl font-semibold hover:bg-gray-700 mb-8"
+        >
+          Start Learning →
+        </button>
+      )}
 
       {progress.length > 0 && (
         <div>
