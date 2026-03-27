@@ -10,12 +10,14 @@
  *   GET    /modules/:id   — get one module + lessons  (public)
  *   PUT    /modules/:id   — update a module           (admin)
  *   DELETE /modules/:id   — delete a module           (admin)
- *   GET    /lessons/:id   — get one lesson with content (public)
+ *   GET    /lessons/:id   — get one lesson with content (requires auth + prereq)
  *   PUT    /lessons/:id   — update a lesson           (admin)
  *   DELETE /lessons/:id   — delete a lesson           (admin)
  *   GET    /puzzles/lesson/:lessonId — puzzles for a lesson (public)
  *   GET    /progress      — list user's completed lessons (requires auth)
  *   POST   /progress      — mark a lesson as complete    (requires auth)
+ *   POST   /admin/modules — create a module              (admin)
+ *   POST   /admin/lessons — create a lesson              (admin)
  */
 
 const express   = require("express");
@@ -52,6 +54,7 @@ const modulesRouter  = require("./routes/modules");
 const lessonsRouter  = require("./routes/lessons");
 const puzzlesRouter  = require("./routes/puzzles");
 const progressRouter = require("./routes/progress");
+const adminRouter    = require("./routes/admin");
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -105,6 +108,7 @@ app.use("/modules",  modulesRouter);
 app.use("/lessons",  lessonsRouter);
 app.use("/puzzles",  puzzlesRouter);
 app.use("/progress", progressRouter);
+app.use("/admin",    adminRouter);
 
 // 404 handler — catches any request that did not match a route above.
 // Returns JSON instead of Express's default HTML error page, which could

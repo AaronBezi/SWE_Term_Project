@@ -5,10 +5,8 @@
  * the user reads/watches. Lessons are unlocked sequentially — the frontend
  * decides which ones are accessible based on the user's progress.
  *
- * These routes are PUBLIC — no login required to read lesson content.
- *
  * Routes:
- *   GET    /lessons/:id  — returns a single lesson including its full content
+ *   GET    /lessons/:id  — returns lesson content (requires auth + prerequisite check)
  *   PUT    /lessons/:id  — update a lesson's title, content, or order (admin)
  *   DELETE /lessons/:id  — delete a lesson (admin)
  *
@@ -27,36 +25,129 @@ const { requireAuth, requireAdmin } = require("../middleware/auth");
 // Returns a single lesson by its numeric ID, including the full text
 // content of the lesson and which module it belongs to.
 //
-// The GET /modules/:id route returns lesson metadata (title, order).
-// This route provides the full content for when the user opens a lesson.
+// Requires the user to be logged in (Bearer token).
+//
+// Prerequisite enforcement:
+//   Lessons must be completed in order. Before returning the lesson,
+//   we check whether the user has already completed the lesson that
+//   comes before the requested one.
+//
+//   Within a module:
+//     Lesson at order_index N requires lesson at order_index N-1
+//     in the same module to be completed first.
+//
+//   First lesson of a module (order_index = 1):
+//     Requires ALL lessons in the previous module (by order_index)
+//     to be completed. If there is no previous module, the lesson
+//     is the very start of the course and is always accessible.
 //
 // Response:
 //   { id, module_id, title, content, order_index, created_at }
+//
+// Response 403: prerequisite not met
 // -------------------------------------------------------------------
-router.get("/:id", async (req, res) => {
-  // req.params.id is always a string, e.g. "3" — parse to a number
+router.get("/:id", requireAuth, async (req, res) => {
   const lessonId = parseInt(req.params.id, 10);
 
-  // Reject the request early if the ID is not a valid integer
   if (isNaN(lessonId)) {
     return res.status(400).json({ error: "Lesson ID must be a number" });
   }
 
+  const userId = req.user.sub;
+
   try {
-    const result = await db.query(
+    // Fetch the requested lesson so we know its module and position
+    const lessonResult = await db.query(
       `SELECT id, module_id, title, content, order_index, created_at
        FROM   lessons
        WHERE  id = $1`,
       [lessonId]
     );
 
-    // If no rows returned, there is no lesson with that ID
-    if (result.rows.length === 0) {
+    if (lessonResult.rows.length === 0) {
       return res.status(404).json({ error: "Lesson not found" });
     }
 
-    // result.rows[0] is the single lesson object
-    res.json(result.rows[0]);
+    const lesson = lessonResult.rows[0];
+
+    // ------------------------------------------------------------------
+    // Prerequisite check
+    // ------------------------------------------------------------------
+
+    if (lesson.order_index === 1) {
+      // This is the first lesson in its module.
+      // Find the module that comes directly before this one in the course
+      // (the module with the highest order_index that is still less than ours).
+      const prevModuleResult = await db.query(
+        `SELECT id FROM modules
+         WHERE  order_index < (SELECT order_index FROM modules WHERE id = $1)
+         ORDER  BY order_index DESC
+         LIMIT  1`,
+        [lesson.module_id]
+      );
+
+      if (prevModuleResult.rows.length > 0) {
+        // A previous module exists — the user must have finished ALL of its lessons.
+        const prevModuleId = prevModuleResult.rows[0].id;
+
+        // Count total lessons in the previous module
+        const totalResult = await db.query(
+          `SELECT COUNT(*) AS total FROM lessons WHERE module_id = $1`,
+          [prevModuleId]
+        );
+
+        // Count how many of those lessons this user has completed
+        const completedResult = await db.query(
+          `SELECT COUNT(*) AS completed
+           FROM   user_progress up
+           JOIN   lessons l ON up.lesson_id = l.id
+           WHERE  l.module_id = $1
+             AND  up.user_id  = $2`,
+          [prevModuleId, userId]
+        );
+
+        const total     = parseInt(totalResult.rows[0].total, 10);
+        const completed = parseInt(completedResult.rows[0].completed, 10);
+
+        if (completed < total) {
+          return res.status(403).json({
+            error: "Complete the previous module first",
+          });
+        }
+      }
+      // If no previous module exists, this is the start of the course — allow access.
+
+    } else {
+      // This is not the first lesson in its module.
+      // The user must have completed the lesson directly before this one
+      // (same module, order_index one lower).
+      const prevLessonResult = await db.query(
+        `SELECT id FROM lessons
+         WHERE  module_id   = $1
+           AND  order_index = $2`,
+        [lesson.module_id, lesson.order_index - 1]
+      );
+
+      if (prevLessonResult.rows.length > 0) {
+        const prevLessonId = prevLessonResult.rows[0].id;
+
+        const progressResult = await db.query(
+          `SELECT id FROM user_progress
+           WHERE  user_id   = $1
+             AND  lesson_id = $2`,
+          [userId, prevLessonId]
+        );
+
+        if (progressResult.rows.length === 0) {
+          return res.status(403).json({
+            error: "Complete the previous lesson first",
+          });
+        }
+      }
+    }
+
+    // All prerequisite checks passed — return the lesson content
+    res.json(lesson);
 
   } catch (err) {
     console.error(`GET /lessons/${lessonId} error:`, err.message);

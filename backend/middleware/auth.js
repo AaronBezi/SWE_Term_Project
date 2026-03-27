@@ -112,4 +112,32 @@ async function requireAdmin(req, res, next) {
   }
 }
 
-module.exports = { requireAuth, requireAdmin };
+/**
+ * requireAdminRole — Express middleware function
+ *
+ * Must be used after requireAuth (relies on req.user being set).
+ * Checks the admin role directly from the verified JWT's app_metadata field —
+ * no database query needed.
+ *
+ * In Supabase, admin roles are granted by setting app_metadata.role = "admin"
+ * on a user via the Supabase Dashboard or service role API. Supabase then
+ * includes that value in every JWT the user receives, so we can read it here
+ * without an extra round-trip to the database.
+ *
+ * Usage:
+ *   router.post("/", requireAuth, requireAdminRole, handler);
+ */
+function requireAdminRole(req, res, next) {
+  // app_metadata is set by Supabase and cannot be modified by the user —
+  // it is safe to trust this value because requireAuth already verified
+  // the JWT's signature before this middleware runs.
+  const role = req.user.app_metadata?.role;
+
+  if (role !== "admin") {
+    return res.status(403).json({ error: "Admin access required" });
+  }
+
+  next();
+}
+
+module.exports = { requireAuth, requireAdmin, requireAdminRole };
