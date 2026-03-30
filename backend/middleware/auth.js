@@ -69,9 +69,11 @@ function requireAuth(req, res, next) {
 
     // Attach the decoded payload to the request so route handlers can use it.
     // Key fields in decoded:
-    //   decoded.sub  — the user's Supabase UUID (e.g., "c3d4e5f6-...")
-    //   decoded.role — the user's role (e.g., "authenticated")
-    //   decoded.exp  — expiration timestamp (already validated by jwt.verify)
+    //   decoded.sub           — the user's Supabase UUID (e.g., "c3d4e5f6-...")
+    //   decoded.role          — Supabase DB role (e.g., "authenticated"), NOT the app role
+    //   decoded.app_metadata  — server-set metadata; decoded.app_metadata.role = "admin"
+    //                           is how we identify admin users (see requireAdminRole below)
+    //   decoded.exp           — expiration timestamp (already validated by jwt.verify)
     req.user = decoded;
 
     // Pass control to the next middleware or the route handler
@@ -79,36 +81,6 @@ function requireAuth(req, res, next) {
   } catch (err) {
     // jwt.verify() threw — token is invalid, expired, or tampered with
     return res.status(401).json({ error: "Invalid or expired token" });
-  }
-}
-
-/**
- * requireAdmin — Express middleware function
- *
- * Must be used after requireAuth (relies on req.user being set).
- * Checks the user's role in the public.users table and rejects
- * the request with 403 Forbidden if they are not an admin.
- *
- * Usage:
- *   router.delete("/:id", requireAuth, requireAdmin, handler);
- */
-const db = require("../db");
-
-async function requireAdmin(req, res, next) {
-  try {
-    const result = await db.query(
-      `SELECT role FROM users WHERE id = $1`,
-      [req.user.sub]
-    );
-
-    if (result.rows.length === 0 || result.rows[0].role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
-
-    next();
-  } catch (err) {
-    console.error("requireAdmin error:", err.message);
-    res.status(500).json({ error: "Failed to verify admin role" });
   }
 }
 
@@ -140,4 +112,4 @@ function requireAdminRole(req, res, next) {
   next();
 }
 
-module.exports = { requireAuth, requireAdmin, requireAdminRole };
+module.exports = { requireAuth, requireAdminRole };

@@ -16,7 +16,7 @@
 const express           = require("express");
 const router            = express.Router();
 const db                = require("../db");
-const { requireAuth, requireAdmin } = require("../middleware/auth");
+const { requireAuth, requireAdminRoleRole } = require("../middleware/auth");
 
 
 // -------------------------------------------------------------------
@@ -168,7 +168,7 @@ router.get("/:id", requireAuth, async (req, res) => {
 // Response: updated lesson object
 //   { id, module_id, title, content, order_index, created_at }
 // -------------------------------------------------------------------
-router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
+router.put("/:id", requireAuth, requireAdminRole, async (req, res) => {
   const lessonId = parseInt(req.params.id, 10);
   if (isNaN(lessonId)) {
     return res.status(400).json({ error: "Lesson ID must be a number" });
@@ -220,7 +220,7 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 // Response 200: { message: "Lesson deleted" }
 // Response 404: lesson not found
 // -------------------------------------------------------------------
-router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
+router.delete("/:id", requireAuth, requireAdminRole, async (req, res) => {
   const lessonId = parseInt(req.params.id, 10);
   if (isNaN(lessonId)) {
     return res.status(400).json({ error: "Lesson ID must be a number" });
