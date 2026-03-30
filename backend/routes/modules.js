@@ -19,7 +19,7 @@
 const express           = require("express");
 const router            = express.Router();
 const db                = require("../db");
-const { requireAuth, requireAdmin } = require("../middleware/auth");
+const { requireAuth, requireAdminRoleRole } = require("../middleware/auth");
 
 
 // -------------------------------------------------------------------
@@ -126,7 +126,7 @@ router.get("/:id", async (req, res) => {
 // Response: updated module object
 //   { id, title, description, order_index, created_at }
 // -------------------------------------------------------------------
-router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
+router.put("/:id", requireAuth, requireAdminRole, async (req, res) => {
   const moduleId = parseInt(req.params.id, 10);
   if (isNaN(moduleId)) {
     return res.status(400).json({ error: "Module ID must be a number" });
@@ -178,7 +178,7 @@ router.put("/:id", requireAuth, requireAdmin, async (req, res) => {
 // Response 200: { message: "Module deleted" }
 // Response 404: module not found
 // -------------------------------------------------------------------
-router.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
+router.delete("/:id", requireAuth, requireAdminRole, async (req, res) => {
   const moduleId = parseInt(req.params.id, 10);
   if (isNaN(moduleId)) {
     return res.status(400).json({ error: "Module ID must be a number" });

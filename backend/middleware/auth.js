@@ -69,9 +69,11 @@ function requireAuth(req, res, next) {
 
     // Attach the decoded payload to the request so route handlers can use it.
     // Key fields in decoded:
-    //   decoded.sub  — the user's Supabase UUID (e.g., "c3d4e5f6-...")
-    //   decoded.role — the user's role (e.g., "authenticated")
-    //   decoded.exp  — expiration timestamp (already validated by jwt.verify)
+    //   decoded.sub           — the user's Supabase UUID (e.g., "c3d4e5f6-...")
+    //   decoded.role          — Supabase DB role (e.g., "authenticated"), NOT the app role
+    //   decoded.app_metadata  — server-set metadata; decoded.app_metadata.role = "admin"
+    //                           is how we identify admin users (see requireAdminRole below)
+    //   decoded.exp           — expiration timestamp (already validated by jwt.verify)
     req.user = decoded;
 
     // Pass control to the next middleware or the route handler
@@ -83,33 +85,31 @@ function requireAuth(req, res, next) {
 }
 
 /**
- * requireAdmin — Express middleware function
+ * requireAdminRole — Express middleware function
  *
  * Must be used after requireAuth (relies on req.user being set).
- * Checks the user's role in the public.users table and rejects
- * the request with 403 Forbidden if they are not an admin.
+ * Checks the admin role directly from the verified JWT's app_metadata field —
+ * no database query needed.
+ *
+ * In Supabase, admin roles are granted by setting app_metadata.role = "admin"
+ * on a user via the Supabase Dashboard or service role API. Supabase then
+ * includes that value in every JWT the user receives, so we can read it here
+ * without an extra round-trip to the database.
  *
  * Usage:
- *   router.delete("/:id", requireAuth, requireAdmin, handler);
+ *   router.post("/", requireAuth, requireAdminRole, handler);
  */
-const db = require("../db");
+function requireAdminRole(req, res, next) {
+  // app_metadata is set by Supabase and cannot be modified by the user —
+  // it is safe to trust this value because requireAuth already verified
+  // the JWT's signature before this middleware runs.
+  const role = req.user.app_metadata?.role;
 
-async function requireAdmin(req, res, next) {
-  try {
-    const result = await db.query(
-      `SELECT role FROM users WHERE id = $1`,
-      [req.user.sub]
-    );
-
-    if (result.rows.length === 0 || result.rows[0].role !== "admin") {
-      return res.status(403).json({ error: "Admin access required" });
-    }
-
-    next();
-  } catch (err) {
-    console.error("requireAdmin error:", err.message);
-    res.status(500).json({ error: "Failed to verify admin role" });
+  if (role !== "admin") {
+    return res.status(403).json({ error: "Admin access required" });
   }
+
+  next();
 }
 
-module.exports = { requireAuth, requireAdmin };
+module.exports = { requireAuth, requireAdminRole };
