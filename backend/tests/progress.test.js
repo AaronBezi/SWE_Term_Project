@@ -67,7 +67,7 @@ describe("GET /progress", () => {
 // POST /progress
 // ----------------------------------------------------------------
 describe("POST /progress", () => {
-  it("records lesson completion and returns 201", async () => {
+  it("records lesson completion and returns 201 with module_completed: false", async () => {
     const progressRow = {
       id: 1,
       user_id: TEST_USER_ID,
@@ -75,9 +75,10 @@ describe("POST /progress", () => {
       completed_at: "2024-01-01",
     };
     db.query
-      .mockResolvedValueOnce({ rows: [{ id: 10 }] })      // lesson exists
-      .mockResolvedValueOnce({ rows: [] })                  // upsert user (no-op)
-      .mockResolvedValueOnce({ rows: [progressRow] });      // insert progress
+      .mockResolvedValueOnce({ rows: [{ id: 10, module_id: 2 }] })   // lesson exists + module_id
+      .mockResolvedValueOnce({ rows: [] })                              // upsert user (no-op)
+      .mockResolvedValueOnce({ rows: [progressRow] })                  // insert progress
+      .mockResolvedValueOnce({ rows: [{ total_lessons: 2, completed_lessons: 1 }] }); // module not done
 
     const res = await request(app)
       .post("/progress")
@@ -86,13 +87,38 @@ describe("POST /progress", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.lesson_id).toBe(10);
+    expect(res.body.module_id).toBe(2);
+    expect(res.body.module_completed).toBe(false);
+  });
+
+  it("returns module_completed: true when the last lesson in a module is finished", async () => {
+    const progressRow = {
+      id: 2,
+      user_id: TEST_USER_ID,
+      lesson_id: 11,
+      completed_at: "2024-01-02",
+    };
+    db.query
+      .mockResolvedValueOnce({ rows: [{ id: 11, module_id: 2 }] })   // lesson exists + module_id
+      .mockResolvedValueOnce({ rows: [] })                              // upsert user
+      .mockResolvedValueOnce({ rows: [progressRow] })                  // insert progress
+      .mockResolvedValueOnce({ rows: [{ total_lessons: 2, completed_lessons: 2 }] }); // module complete
+
+    const res = await request(app)
+      .post("/progress")
+      .set("Authorization", `Bearer ${learnerToken}`)
+      .send({ lesson_id: 11 });
+
+    expect(res.status).toBe(201);
+    expect(res.body.module_id).toBe(2);
+    expect(res.body.module_completed).toBe(true);
   });
 
   it("returns 200 when the lesson was already completed (idempotent)", async () => {
     db.query
-      .mockResolvedValueOnce({ rows: [{ id: 10 }] })  // lesson exists
-      .mockResolvedValueOnce({ rows: [] })              // upsert user
-      .mockResolvedValueOnce({ rows: [] });             // ON CONFLICT DO NOTHING — no row returned
+      .mockResolvedValueOnce({ rows: [{ id: 10, module_id: 2 }] })  // lesson exists
+      .mockResolvedValueOnce({ rows: [] })                             // upsert user
+      .mockResolvedValueOnce({ rows: [] });                            // ON CONFLICT DO NOTHING — no row returned
 
     const res = await request(app)
       .post("/progress")
@@ -137,6 +163,82 @@ describe("POST /progress", () => {
     const res = await request(app)
       .post("/progress")
       .send({ lesson_id: 10 });
+
+    expect(res.status).toBe(401);
+  });
+});
+
+// ----------------------------------------------------------------
+// GET /progress/module-completion
+// ----------------------------------------------------------------
+describe("GET /progress/module-completion", () => {
+  it("returns per-module completion status for the authenticated user", async () => {
+    const rows = [
+      {
+        module_id: 1,
+        module_title: "Fundamentals",
+        order_index: 1,
+        total_lessons: 2,
+        completed_lessons: 2,
+        is_complete: true,
+      },
+      {
+        module_id: 2,
+        module_title: "Tactics",
+        order_index: 2,
+        total_lessons: 2,
+        completed_lessons: 1,
+        is_complete: false,
+      },
+    ];
+    db.query.mockResolvedValueOnce({ rows });
+
+    const res = await request(app)
+      .get("/progress/module-completion")
+      .set("Authorization", `Bearer ${learnerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(2);
+    expect(res.body[0].is_complete).toBe(true);
+    expect(res.body[0].completed_lessons).toBe(2);
+    expect(res.body[1].is_complete).toBe(false);
+    expect(res.body[1].completed_lessons).toBe(1);
+  });
+
+  it("marks a module with no lessons as not complete", async () => {
+    const rows = [
+      {
+        module_id: 1,
+        module_title: "Empty Module",
+        order_index: 1,
+        total_lessons: 0,
+        completed_lessons: 0,
+        is_complete: false,
+      },
+    ];
+    db.query.mockResolvedValueOnce({ rows });
+
+    const res = await request(app)
+      .get("/progress/module-completion")
+      .set("Authorization", `Bearer ${learnerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body[0].is_complete).toBe(false);
+  });
+
+  it("returns an empty array when there are no modules", async () => {
+    db.query.mockResolvedValueOnce({ rows: [] });
+
+    const res = await request(app)
+      .get("/progress/module-completion")
+      .set("Authorization", `Bearer ${learnerToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it("returns 401 without a token", async () => {
+    const res = await request(app).get("/progress/module-completion");
 
     expect(res.status).toBe(401);
   });

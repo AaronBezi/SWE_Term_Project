@@ -29,6 +29,61 @@ router.use(requireAuth);
 
 
 // -------------------------------------------------------------------
+// GET /progress/module-completion
+//
+// Returns every module with a breakdown of how many lessons the user
+// has completed and whether the module is fully complete.
+//
+// A module is considered complete when completed_lessons === total_lessons
+// AND total_lessons > 0 (a module with no lessons is never "complete").
+//
+// Response: array ordered by module order_index
+//   [
+//     {
+//       module_id, module_title, order_index,
+//       total_lessons,      -- number of lessons in this module
+//       completed_lessons,  -- how many the user has finished
+//       is_complete         -- true when all lessons are done
+//     },
+//     ...
+//   ]
+// -------------------------------------------------------------------
+router.get("/module-completion", async (req, res) => {
+  const userId = req.user.sub;
+
+  try {
+    // Single query: left-join modules → lessons → user_progress so that
+    // modules with no lessons still appear (with totals of 0).
+    const result = await db.query(
+      `SELECT
+         m.id           AS module_id,
+         m.title        AS module_title,
+         m.order_index,
+         COUNT(l.id)::int                    AS total_lessons,
+         COUNT(up.id)::int                   AS completed_lessons,
+         COUNT(l.id) > 0
+           AND COUNT(l.id) = COUNT(up.id)    AS is_complete
+       FROM   modules m
+       LEFT JOIN lessons l
+              ON l.module_id = m.id
+       LEFT JOIN user_progress up
+              ON up.lesson_id = l.id
+             AND up.user_id   = $1
+       GROUP  BY m.id, m.title, m.order_index
+       ORDER  BY m.order_index ASC`,
+      [userId]
+    );
+
+    res.json(result.rows);
+
+  } catch (err) {
+    console.error("GET /progress/module-completion error:", err.message);
+    res.status(500).json({ error: "Failed to fetch module completion" });
+  }
+});
+
+
+// -------------------------------------------------------------------
 // GET /progress
 //
 // Returns every lesson the authenticated user has completed, along with
@@ -112,15 +167,17 @@ router.post("/", async (req, res) => {
 
   try {
     // --- Step 1: ensure the lesson exists before recording progress ---
-    // This prevents orphaned progress records for non-existent lesson IDs.
+    // Also fetch module_id so we can check module completion afterwards.
     const lessonCheck = await db.query(
-      `SELECT id FROM lessons WHERE id = $1`,
+      `SELECT id, module_id FROM lessons WHERE id = $1`,
       [lesson_id]
     );
 
     if (lessonCheck.rows.length === 0) {
       return res.status(404).json({ error: "Lesson not found" });
     }
+
+    const { module_id } = lessonCheck.rows[0];
 
     // --- Step 2: ensure the user exists in our local users table ---
     // In production, Supabase's trigger creates the user row automatically.
@@ -149,8 +206,31 @@ router.post("/", async (req, res) => {
       return res.status(200).json({ message: "Lesson already marked as completed" });
     }
 
-    // 201 Created — return the new progress record
-    res.status(201).json(result.rows[0]);
+    // --- Step 4: detect module completion ---
+    // A module is complete when every lesson in it has a progress record
+    // for this user. We check this immediately after the insert so the
+    // frontend receives the signal in the same response.
+    const completionCheck = await db.query(
+      `SELECT
+         COUNT(l.id)::int                  AS total_lessons,
+         COUNT(up.id)::int                 AS completed_lessons
+       FROM   lessons l
+       LEFT JOIN user_progress up
+              ON up.lesson_id = l.id
+             AND up.user_id   = $1
+       WHERE  l.module_id = $2`,
+      [userId, module_id]
+    );
+
+    const { total_lessons, completed_lessons } = completionCheck.rows[0];
+    const module_completed = total_lessons > 0 && total_lessons === completed_lessons;
+
+    // 201 Created — return the new progress record plus module completion signal
+    res.status(201).json({
+      ...result.rows[0],
+      module_id,
+      module_completed,
+    });
 
   } catch (err) {
     console.error("POST /progress error:", err.message);
