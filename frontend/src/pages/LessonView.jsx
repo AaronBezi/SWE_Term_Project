@@ -15,7 +15,19 @@ export default function LessonView() {
   useEffect(() => {
     async function loadLesson() {
       try {
-        const res = await fetch(`${API}/lessons/${id}`)
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session) {
+          navigate('/login')
+          return
+        }
+        const res = await fetch(`${API}/lessons/${id}`, {
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        })
+        if (res.status === 401) { navigate('/login'); return }
+        if (res.status === 403) {
+          const data = await res.json()
+          throw new Error(data.error || 'You must complete the previous lesson first')
+        }
         if (res.status === 404) throw new Error('Lesson not found')
         if (!res.ok) throw new Error('Failed to load lesson')
         const data = await res.json()
@@ -27,7 +39,7 @@ export default function LessonView() {
       }
     }
     loadLesson()
-  }, [id])
+  }, [id, navigate])
 
   async function handleComplete() {
     setCompleting(true)
@@ -58,57 +70,74 @@ export default function LessonView() {
   }
 
   if (loading) return (
-    <div className="p-8 text-gray-500">Loading lesson...</div>
+    <div className="min-h-screen bg-violet-50 flex items-center justify-center">
+      <p className="text-gray-400">Loading lesson...</p>
+    </div>
   )
 
   if (error) return (
-    <div className="p-8">
-      <p className="text-red-500 mb-2">{error}</p>
-      <button
-        onClick={() => navigate('/modules')}
-        className="text-sm text-gray-500 hover:underline"
-      >
-        ← Back to modules
-      </button>
+    <div className="min-h-screen bg-violet-50 p-8">
+      <div className="max-w-2xl mx-auto">
+        <div className="bg-white rounded-2xl border p-8 text-center">
+          <p className="text-red-500 font-medium mb-4">{error}</p>
+          <button
+            onClick={() => navigate('/modules')}
+            className="text-sm text-violet-500 hover:text-violet-800 font-medium"
+          >
+            ← Back to modules
+          </button>
+        </div>
+      </div>
     </div>
   )
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-10">
-      <button
-        onClick={() => navigate('/modules')}
-        className="text-sm text-gray-500 hover:text-gray-800 mb-6 flex items-center gap-1"
-      >
-        ← Back to modules
-      </button>
+    <div className="min-h-screen bg-violet-50">
+      <div className="max-w-2xl mx-auto px-6 py-12">
 
-      <h1 className="text-3xl font-bold mb-4">{lesson.title}</h1>
-
-      <div className="bg-white border rounded-xl p-6 mb-8 text-gray-700 leading-relaxed whitespace-pre-wrap">
-        {lesson.content || 'No content available for this lesson yet.'}
-      </div>
-
-      {completed ? (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-center">
-          <p className="text-green-700 font-semibold text-lg mb-2">
-            ✓ Lesson Complete!
-          </p>
-          <button
-            onClick={() => navigate('/modules')}
-            className="text-sm text-green-800 underline hover:no-underline"
-          >
-            Back to modules →
-          </button>
-        </div>
-      ) : (
+        {/* Back link */}
         <button
-          onClick={handleComplete}
-          disabled={completing}
-          className="w-full bg-gray-900 text-white py-3 rounded-xl font-medium hover:bg-gray-700 disabled:opacity-50"
+          onClick={() => navigate('/modules')}
+          className="flex items-center gap-1 text-sm text-gray-500 hover:text-violet-500 transition-colors mb-8 font-medium"
         >
-          {completing ? 'Saving...' : 'Mark as Complete ✓'}
+          ← Back to modules
         </button>
-      )}
+
+        {/* Lesson title */}
+        <h1 className="text-3xl font-extrabold text-gray-900 mb-6">{lesson.title}</h1>
+
+        {/* Lesson content */}
+        <div className="bg-white rounded-2xl border shadow-sm p-6 mb-8 text-gray-700 leading-relaxed whitespace-pre-wrap">
+          {lesson.content || (
+            <span className="text-gray-400 italic">No content available for this lesson yet.</span>
+          )}
+        </div>
+
+        {/* Complete / Done */}
+        {completed ? (
+          <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
+            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+              <span className="text-green-600 text-xl font-bold">✓</span>
+            </div>
+            <p className="text-green-700 font-bold text-lg mb-1">Lesson Complete!</p>
+            <p className="text-green-600 text-sm mb-4">Great work — keep going.</p>
+            <button
+              onClick={() => navigate('/modules')}
+              className="bg-violet-500 text-white px-5 py-2 rounded-xl text-sm font-semibold hover:bg-violet-600 transition-colors"
+            >
+              Back to modules →
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={handleComplete}
+            disabled={completing}
+            className="w-full bg-violet-500 text-white py-3 rounded-xl font-semibold hover:bg-violet-600 transition-colors disabled:opacity-50"
+          >
+            {completing ? 'Saving...' : 'Mark as Complete ✓'}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

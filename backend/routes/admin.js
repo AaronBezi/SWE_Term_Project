@@ -1,7 +1,8 @@
 /**
- * routes/admin.js — Admin-only API routes for creating content
+ * routes/admin.js — Admin-only API routes for creating content and managing users
  *
- * These routes allow admins to create new modules and lessons.
+ * These routes allow admins to create new modules and lessons,
+ * and to grant or revoke the admin role for other users.
  * All routes require the user to be logged in AND have admin role.
  *
  * How admin role works:
@@ -9,19 +10,36 @@
  *   The requireAdminRole middleware reads that field directly from
  *   the already-verified token — no extra database query needed.
  *   To grant a user admin access, set app_metadata.role = "admin"
- *   via the Supabase Dashboard or service role API.
+ *   via the Supabase Dashboard or the PATCH /admin/users/:id/role route.
  *
  * Routes:
- *   POST /admin/modules  — create a new module
- *   POST /admin/lessons  — create a new lesson inside a module
+ *   POST  /admin/modules          — create a new module
+ *   POST  /admin/lessons          — create a new lesson inside a module
+ *   GET   /admin/users            — list all users with their roles
+ *   PATCH /admin/users/:id/role   — set a user's role to "admin" or "learner"
  *
  * Mounted in index.js at: app.use("/admin", adminRouter)
  */
 
-const express                        = require("express");
-const router                         = express.Router();
-const db                             = require("../db");
+const express                           = require("express");
+const router                            = express.Router();
+const db                                = require("../db");
+const { createClient }                  = require("@supabase/supabase-js");
 const { requireAuth, requireAdminRole } = require("../middleware/auth");
+
+// Supabase admin client — lazily created on first use so that importing
+// this module in tests does not throw when env vars are absent.
+// SUPABASE_SERVICE_ROLE_KEY must never be sent to the frontend.
+let _supabaseAdmin = null;
+function getSupabaseAdmin() {
+  if (!_supabaseAdmin) {
+    _supabaseAdmin = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SERVICE_ROLE_KEY
+    );
+  }
+  return _supabaseAdmin;
+}
 
 // Apply both auth checks to every route in this file.
 // Any request without a valid token, or from a non-admin user, is rejected
@@ -151,6 +169,102 @@ router.post("/lessons", async (req, res) => {
     console.error("POST /admin/lessons error:", err.message);
     res.status(500).json({ error: "Failed to create lesson" });
   }
+});
+
+
+// -------------------------------------------------------------------
+// GET /admin/users
+//
+// Returns a list of every Supabase user along with their current role
+// as stored in app_metadata.
+//
+// Uses the Supabase service-role client — only the backend calls this.
+//
+// Response: array of user summaries
+//   [ { id, email, role, created_at }, ... ]
+// -------------------------------------------------------------------
+router.get("/users", async (req, res) => {
+  const { data, error } = await getSupabaseAdmin().auth.admin.listUsers();
+
+  if (error) {
+    console.error("GET /admin/users error:", error.message);
+    return res.status(500).json({ error: "Failed to fetch users" });
+  }
+
+  const users = data.users.map(u => ({
+    id:         u.id,
+    email:      u.email,
+    role:       u.app_metadata?.role ?? "learner",
+    created_at: u.created_at,
+  }));
+
+  res.json(users);
+});
+
+
+// -------------------------------------------------------------------
+// PATCH /admin/users/:id/role
+//
+// Sets the role (in app_metadata) of the specified user to either
+// "admin" or "learner".
+//
+// The calling admin cannot change their own role — this prevents
+// accidental self-lockout.
+//
+// If this would remove the last admin account, the request is also
+// rejected so the system can never end up with zero admins.
+//
+// Required body fields:
+//   role  (string)  — "admin" or "learner"
+//
+// Response: { id, role }
+// Response 400: invalid role, or self-modification, or last admin
+// Response 404: user not found
+// -------------------------------------------------------------------
+router.patch("/users/:id/role", async (req, res) => {
+  const { role } = req.body;
+  const targetId = req.params.id;
+
+  if (role !== "admin" && role !== "learner") {
+    return res.status(400).json({ error: "role must be 'admin' or 'learner'" });
+  }
+
+  // Prevent an admin from accidentally removing their own access
+  if (targetId === req.user.sub) {
+    return res.status(400).json({ error: "You cannot change your own role" });
+  }
+
+  // Guard against removing the last admin — ensure at least one other
+  // admin would still exist after this change.
+  if (role === "learner") {
+    const { data, error: listError } = await getSupabaseAdmin().auth.admin.listUsers();
+    if (listError) {
+      console.error("PATCH /admin/users role guard error:", listError.message);
+      return res.status(500).json({ error: "Failed to verify admin count" });
+    }
+    const adminCount = data.users.filter(
+      u => u.app_metadata?.role === "admin"
+    ).length;
+    if (adminCount <= 1) {
+      return res.status(400).json({ error: "Cannot remove the last admin account" });
+    }
+  }
+
+  const { data, error } = await getSupabaseAdmin().auth.admin.updateUserById(
+    targetId,
+    { app_metadata: { role } }
+  );
+
+  if (error) {
+    // Supabase returns a 422 when the user ID does not exist
+    if (error.status === 422) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    console.error("PATCH /admin/users/:id/role error:", error.message);
+    return res.status(500).json({ error: "Failed to update role" });
+  }
+
+  res.json({ id: data.user.id, role });
 });
 
 
