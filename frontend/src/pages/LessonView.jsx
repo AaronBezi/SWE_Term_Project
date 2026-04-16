@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { supabase } from '../supabaseClient'
 import API from '../config'
+import PuzzleBoard from '../components/PuzzleBoard'
 
 export default function LessonView() {
   const { id } = useParams()
@@ -107,11 +110,45 @@ export default function LessonView() {
         <h1 className="text-3xl font-extrabold text-gray-900 mb-6">{lesson.title}</h1>
 
         {/* Lesson content */}
-        <div className="bg-white rounded-2xl border shadow-sm p-6 mb-8 text-gray-700 leading-relaxed whitespace-pre-wrap">
-          {lesson.content || (
+        <div className="bg-white rounded-2xl border shadow-sm p-6 mb-8 text-gray-700 leading-relaxed prose prose-violet max-w-none">
+          {lesson.content ? (
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                h1: ({ children }) => <h1 className="text-2xl font-bold text-gray-900 mt-6 mb-3">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-xl font-bold text-gray-800 mt-5 mb-2">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-lg font-semibold text-gray-800 mt-4 mb-2">{children}</h3>,
+                p: ({ children }) => <p className="mb-4 text-gray-700 leading-relaxed">{children}</p>,
+                ul: ({ children }) => <ul className="list-disc list-inside mb-4 space-y-1">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal list-inside mb-4 space-y-1">{children}</ol>,
+                li: ({ children }) => <li className="text-gray-700">{children}</li>,
+                strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
+                em: ({ children }) => <em className="italic text-gray-600">{children}</em>,
+                hr: () => <hr className="my-6 border-gray-200" />,
+                blockquote: ({ children }) => (
+                  <blockquote className="border-l-4 border-violet-300 pl-4 italic text-gray-500 my-4">{children}</blockquote>
+                ),
+                table: ({ children }) => (
+                  <div className="overflow-x-auto my-4">
+                    <table className="min-w-full border border-gray-200 rounded-lg text-sm">{children}</table>
+                  </div>
+                ),
+                thead: ({ children }) => <thead className="bg-violet-50">{children}</thead>,
+                tbody: ({ children }) => <tbody className="divide-y divide-gray-100">{children}</tbody>,
+                tr: ({ children }) => <tr className="divide-x divide-gray-200">{children}</tr>,
+                th: ({ children }) => <th className="px-4 py-2 text-left font-semibold text-gray-700 border-b border-gray-200">{children}</th>,
+                td: ({ children }) => <td className="px-4 py-2 text-gray-700">{children}</td>,
+              }}
+            >
+              {lesson.content}
+            </ReactMarkdown>
+          ) : (
             <span className="text-gray-400 italic">No content available for this lesson yet.</span>
           )}
         </div>
+
+        {/* Puzzles */}
+        <PuzzleBoard lessonId={Number(id)} />
 
         {/* Complete / Done */}
         {completed ? (

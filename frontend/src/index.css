@@ -1,1 +1,8 @@
 @import "tailwindcss";
+
+/* Smooth piece movement for react-chessboard.
+   The library uses linear easing by default; override to ease-in-out
+   so animated moves (opponent auto-move, correct player move) feel fluid. */
+#chessboard * {
+  transition-timing-function: ease-in-out !important;
+}
