@@ -37,23 +37,14 @@ cd ../backend && npm install
 
 ### 2. Configure Environment Variables
 
-Create a `.env` file in `frontend/`:
+Copy the example files and fill in your values:
 
-```
-VITE_SUPABASE_URL=<ask project manager for this>
-VITE_SUPABASE_ANON_KEY=<ask project manager for this>
-```
-
-Create a `.env` file in `backend/`:
-
-```
-PORT=3000
-DATABASE_URL=postgresql://postgres:<your-postgres-password>@127.0.0.1:5432/caissa
-SUPABASE_JWT_SECRET=<ask project manager for this>
+```bash
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
 ```
 
-Replace `<your-postgres-password>` with the password you set during PostgreSQL installation.
-`SUPABASE_JWT_SECRET` is found in the Supabase Dashboard → **Settings → JWT Keys → Legacy JWT Keys → Legacy JWT secret (still used)**.
+All Supabase keys are pre-filled in the example files and shared across the team. The only value you need to change is `DATABASE_URL` in `backend/.env` — replace `yourpassword` with the password you set during PostgreSQL installation.
 
 > **Password special characters:** If your PostgreSQL password contains `?`, `#`, `@`, or `!`, you must percent-encode them in `DATABASE_URL` or the server will fail to connect. Common encodings: `!` → `%21`, `?` → `%3F`, `#` → `%23`, `@` → `%40`. Example: password `my!pass?` becomes `my%21pass%3F` in the URL.
 
